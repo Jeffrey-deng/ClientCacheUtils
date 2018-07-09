@@ -102,6 +102,7 @@
                             }
                         });
                     }
+                    context.clearTimeoutKeys(groupName);
                 }
             } catch (e) {
                 context.utils.setGroup(groupName, null);
@@ -130,8 +131,37 @@
             "get": function (key, callback) {
                 context.get(groupConfig.groupName, key, callback);
             },
+            "remove": function (key) {
+                context.utils.removeCache(groupConfig.groupName, key);
+            },
+            "clearTimeoutKeys": function () {
+                context.clearTimeoutKeys(groupConfig.groupName);
+            },
             "groupConfig": groupConfig
         };
+    };
+
+    /**
+     * 清除该组所有过时的key值
+     * @param groupName
+     */
+    PeriodCache.prototype.clearTimeoutKeys = function (groupName) {
+        var context = this;
+        try {
+            var group = context.utils.getGroup(groupName);
+            var groupConfig = context.utils.getGroupConfig(group);
+            var nowTime = new Date().getTime();
+            $.each(group, function (key, item) {
+                if (key != context.pointer.groupConfig_storeKey) {
+                    if (nowTime - item.header.update_time >= groupConfig.timeOut) {
+                        delete group[key];
+                    }
+                }
+            });
+            context.utils.setGroup(group[context.pointer.groupConfig_storeKey].groupName, group);
+        } catch (e) {
+            console.warn("PeriodCache Warn: found error when clear timeout keys from cache, groupName: " + groupName + ", exception: ", e);
+        }
     };
 
     PeriodCache.prototype.utils = {
@@ -191,7 +221,11 @@
          * @returns {null}
          */
         "getGroup": function (groupName) {
-            return this.context.pointer.cacheCtx.getItem(groupName);
+            if (typeof groupName == "object") {
+                return groupName;
+            } else {
+                return this.context.pointer.cacheCtx.getItem(groupName);
+            }
         },
         /**
          * 添加一个对象到缓存组
@@ -253,6 +287,11 @@
             } else {
                 return null;
             }
+        },
+        "removeCache": function (groupName, key) {
+            var group = this.getGroup(groupName);
+            delete group[key];
+            this.setGroup(group[this.context.pointer.groupConfig_storeKey].groupName, group);
         }
     };
 
@@ -356,11 +395,11 @@
     };
 
     /**
-     * utils - 静态工具箱
-     * @returns {*}
+     * 清除该组所有过时的key值
+     * @param groupName
      */
-    PeriodCache.utils = function () {
-        return PeriodCache.staticContext.utils;
+    PeriodCache.clearTimeoutKeys = function () {
+        return PeriodCache.prototype.clearTimeoutKeys.apply(PeriodCache.staticContext, arguments);
     };
 
     /**
@@ -372,6 +411,7 @@
         "create": PeriodCache.create,
         "get": PeriodCache.get,
         "getOrCreateGroup": PeriodCache.getOrCreateGroup,
+        "clearTimeoutKeys": PeriodCache.clearTimeoutKeys,
         "utils": $.extend({"context": null}, PeriodCache.prototype.utils)
     };
     // 手动指定防止循环引用
@@ -379,6 +419,12 @@
         "pointer":  PeriodCache.pointer,
         "groupDefaultConfig": PeriodCache.groupDefaultConfig
     };
+
+    /**
+     * utils - 静态工具箱
+     * @returns {*}
+     */
+    PeriodCache.utils = PeriodCache.staticContext.utils;
 
     /**
      * 构建一个缓存实例
